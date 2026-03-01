@@ -289,7 +289,7 @@ class ImageDetector:
                             continue
                         gpu_img_s = cv2.cuda.resize(
                             gpu_img, (new_w, new_h),
-                            interpolation=cv2.INTER_NEAREST)
+                            interpolation=cv2.INTER_AREA)
                         if gpu_tmpl_orig is None:
                             continue
                         max_val, max_loc = self._cuda_match(
@@ -365,7 +365,7 @@ class ImageDetector:
                     if new_w < tw or new_h < th:
                         continue
                     scaled_img = cv2.resize(img_gray, (new_w, new_h),
-                                            interpolation=cv2.INTER_NEAREST)
+                                            interpolation=cv2.INTER_AREA)
                     max_val, max_loc = self._match_template(scaled_img, tmpl)
                     if max_val > best_val:
                         best_val = max_val

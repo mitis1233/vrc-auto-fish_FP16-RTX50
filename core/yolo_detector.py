@@ -4,9 +4,10 @@ YOLO 目标检测器
 封装 ultralytics YOLO 推理，提供与模板匹配 Detector 兼容的接口。
 
 检测类别:
-  0 = fish  (鱼图标)    → 返回 (x, y, w, h, conf)
-  1 = bar   (白色捕捉条) → 返回 (x, y, w, h, conf)
-  2 = track (钓鱼轨道)  → 返回 (x, y, w, h, conf)
+  0 = fish     (鱼图标)      → 返回 (x, y, w, h, conf)
+  1 = bar      (白色捕捉条)  → 返回 (x, y, w, h, conf)
+  2 = track    (钓鱼轨道)    → 返回 (x, y, w, h, conf)
+  3 = progress (绿色进度条)  → 返回 (x, y, w, h, conf)
 """
 
 import os
@@ -28,8 +29,9 @@ class YoloDetector:
     CLASS_FISH = 0
     CLASS_BAR = 1
     CLASS_TRACK = 2
+    CLASS_PROGRESS = 3
 
-    def __init__(self, model_path: str, conf: float = 0.5, device=0):
+    def __init__(self, model_path: str, conf: float = 0.5, device="auto"):
         if not _YOLO_AVAILABLE:
             raise ImportError(
                 "ultralytics 未安装。请运行: pip install ultralytics"
@@ -40,27 +42,44 @@ class YoloDetector:
         self.conf = conf
         self.model = YOLO(model_path)
 
+        import config as _cfg
+        dev_pref = getattr(_cfg, "YOLO_DEVICE", "auto")
+        if dev_pref == "cpu":
+            target_dev = "cpu"
+        elif dev_pref == "gpu":
+            target_dev = 0
+        else:
+            target_dev = 0
+
         warmup_img = np.zeros((640, 640, 3), dtype=np.uint8)
-        try:
-            log.info(f"[YOLO] 加载模型: {model_path}")
-            self.model.predict(
-                warmup_img, conf=0.5, device=device,
-                verbose=False, imgsz=640,
-            )
-            self._device = device
-            for _ in range(2):
+
+        if target_dev != "cpu":
+            try:
+                log.info(f"[YOLO] 加载模型 (GPU): {model_path}")
                 self.model.predict(
-                    warmup_img, conf=0.5, device=device,
+                    warmup_img, conf=0.5, device=target_dev,
                     verbose=False, imgsz=640,
                 )
-            log.info(f"[YOLO] ✓ GPU 预热完成: {self.model.names}")
-        except Exception:
-            self._device = "cpu"
-            self.model.predict(
-                warmup_img, conf=0.5, device="cpu",
-                verbose=False, imgsz=640,
-            )
-            log.info(f"[YOLO] ✓ 模型加载成功 (CPU): {model_path}")
+                self._device = target_dev
+                for _ in range(2):
+                    self.model.predict(
+                        warmup_img, conf=0.5, device=target_dev,
+                        verbose=False, imgsz=640,
+                    )
+                log.info(f"[YOLO] ✓ GPU 预热完成: {self.model.names}")
+                return
+            except Exception as e:
+                if dev_pref == "gpu":
+                    raise RuntimeError(f"[YOLO] 强制 GPU 模式但初始化失败: {e}")
+                log.warning(f"[YOLO] GPU 不可用 ({e}), 回退 CPU")
+
+        self._device = "cpu"
+        log.info(f"[YOLO] 加载模型 (CPU): {model_path}")
+        self.model.predict(
+            warmup_img, conf=0.5, device="cpu",
+            verbose=False, imgsz=640,
+        )
+        log.info(f"[YOLO] ✓ CPU 模式就绪: {self.model.names}")
 
     def detect(self, screen, roi=None):
         """
@@ -102,6 +121,7 @@ class YoloDetector:
             "fish": None,
             "bar": None,
             "track": None,
+            "progress": None,
             "fish_name": "",
             "raw": [],
         }
@@ -137,6 +157,9 @@ class YoloDetector:
             elif class_name == "track":
                 if detections["track"] is None or conf > detections["track"][4]:
                     detections["track"] = det
+            elif class_name == "progress":
+                if detections["progress"] is None or conf > detections["progress"][4]:
+                    detections["progress"] = det
 
         return detections
 

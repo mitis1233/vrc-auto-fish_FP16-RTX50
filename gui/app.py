@@ -12,7 +12,6 @@ from tkinter import ttk, scrolledtext
 import threading
 import queue
 import json
-import importlib
 import keyboard
 import cv2
 
@@ -70,8 +69,8 @@ class FishingApp:
         # ── 加载上次保存的参数 ──
         self._load_settings()
 
-        # ── 预加载 YOLO（settings 加载后才知道 USE_YOLO 的值）──
-        if config.USE_YOLO and self.bot.yolo is None:
+        # ── 预加载 YOLO ──
+        if self.bot.yolo is None:
             self._preload_yolo()
 
         # ── 注册全局快捷键 ──
@@ -85,7 +84,7 @@ class FishingApp:
         # ── 关闭处理 ──
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
-        self._log_msg("[系统] 脚本已就绪，点击「开始」或按 F9")
+        self._log_msg("GitHub: https://github.com/day123123123/vrc-auto-fish")
 
     # ══════════════════════════════════════════════════════
     #  界面构建
@@ -151,10 +150,6 @@ class FishingApp:
                                          command=self._on_screenshot, width=15)
         self.btn_screenshot.pack(side="left", padx=5)
 
-        self.btn_reload = ttk.Button(frm_aux, text="🔄 热重载",
-                                     command=self._on_reload, width=12)
-        self.btn_reload.pack(side="left", padx=5)
-
         self.btn_clearlog = ttk.Button(frm_aux, text="🗑 清空日志",
                                        command=self._on_clear_log, width=12)
         self.btn_clearlog.pack(side="left", padx=5)
@@ -169,21 +164,31 @@ class FishingApp:
                         variable=self.var_osc,
                         command=self._on_osc_toggle).pack(side="left", padx=5)
 
+        self.var_show_debug = tk.BooleanVar(value=config.SHOW_DEBUG)
+        ttk.Checkbutton(frm_aux, text="Debug窗口",
+                        variable=self.var_show_debug,
+                        command=self._on_debug_toggle).pack(side="left", padx=5)
+
         # ── YOLO 控制区 ──
         frm_yolo = ttk.LabelFrame(self.root, text=" YOLO 目标检测 ")
         frm_yolo.pack(fill="x", **pad)
 
-        self.var_yolo = tk.BooleanVar(value=config.USE_YOLO)
-        ttk.Checkbutton(frm_yolo, text="启用 YOLO",
-                        variable=self.var_yolo,
-                        command=self._on_yolo_toggle).pack(
-                            side="left", padx=5)
+        config.USE_YOLO = True
+        ttk.Label(frm_yolo, text="YOLO 已启用").pack(side="left", padx=5)
 
         self.var_yolo_collect = tk.BooleanVar(value=config.YOLO_COLLECT)
         ttk.Checkbutton(frm_yolo, text="采集数据",
                         variable=self.var_yolo_collect,
                         command=self._on_yolo_collect_toggle).pack(
                             side="left", padx=5)
+
+        ttk.Label(frm_yolo, text="设备:").pack(side="left", padx=(10, 2))
+        self.var_yolo_device = tk.StringVar(value=config.YOLO_DEVICE)
+        cmb_dev = ttk.Combobox(frm_yolo, textvariable=self.var_yolo_device,
+                               values=["auto", "cpu", "gpu"],
+                               state="readonly", width=5)
+        cmb_dev.pack(side="left", padx=2)
+        cmb_dev.bind("<<ComboboxSelected>>", self._on_yolo_device_change)
 
         self.var_yolo_status = tk.StringVar(value="")
         self._update_yolo_status()
@@ -382,8 +387,9 @@ class FishingApp:
             data[attr] = getattr(config, attr)
         data["USE_OSC"] = config.USE_OSC
         data["DETECT_ROI"] = config.DETECT_ROI
-        data["USE_YOLO"] = config.USE_YOLO
         data["YOLO_COLLECT"] = config.YOLO_COLLECT
+        data["YOLO_DEVICE"] = config.YOLO_DEVICE
+        data["SHOW_DEBUG"] = config.SHOW_DEBUG
         try:
             with open(config.SETTINGS_FILE, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
@@ -415,15 +421,21 @@ class FishingApp:
                     else:
                         config.DETECT_ROI = None
                     loaded.append(attr)
-                elif attr == "USE_YOLO":
-                    config.USE_YOLO = bool(val)
-                    if hasattr(self, 'var_yolo'):
-                        self.var_yolo.set(config.USE_YOLO)
-                    loaded.append(attr)
                 elif attr == "YOLO_COLLECT":
                     config.YOLO_COLLECT = bool(val)
                     if hasattr(self, 'var_yolo_collect'):
                         self.var_yolo_collect.set(config.YOLO_COLLECT)
+                    loaded.append(attr)
+                elif attr == "YOLO_DEVICE":
+                    if val in ("auto", "cpu", "gpu"):
+                        config.YOLO_DEVICE = val
+                        if hasattr(self, 'var_yolo_device'):
+                            self.var_yolo_device.set(val)
+                    loaded.append(attr)
+                elif attr == "SHOW_DEBUG":
+                    config.SHOW_DEBUG = bool(val)
+                    if hasattr(self, 'var_show_debug'):
+                        self.var_show_debug.set(config.SHOW_DEBUG)
                     loaded.append(attr)
                 elif attr in self._param_vars:
                     setattr(config, attr, val)
@@ -542,42 +554,6 @@ class FishingApp:
         else:
             self._log_msg("[错误] 截图失败")
 
-    def _on_reload(self):
-        """热重载: 重新加载所有业务模块, 重建 bot 实例"""
-        if self.bot.running:
-            self._on_stop()
-            if self.bot_thread and self.bot_thread.is_alive():
-                self.bot_thread.join(timeout=3)
-
-        try:
-            import core.window as _m_window
-            import core.screen as _m_screen
-            import core.detector as _m_detector
-            import core.input_ctrl as _m_input
-            import core.bot as _m_bot
-            import utils.logger as _m_log
-
-            importlib.reload(config)
-            importlib.reload(_m_log)
-            importlib.reload(_m_window)
-            importlib.reload(_m_screen)
-            importlib.reload(_m_detector)
-            importlib.reload(_m_input)
-            try:
-                import core.yolo_detector as _m_yolo
-                importlib.reload(_m_yolo)
-            except ImportError:
-                pass
-            importlib.reload(_m_bot)
-
-            self.bot = _m_bot.FishingBot()
-            self._load_settings()
-            self._apply_params()
-
-            self._log_msg("[系统] 🔄 热重载完成 — 所有模块已刷新")
-        except Exception as e:
-            self._log_msg(f"[错误] 热重载失败: {e}")
-
     def _on_clear_log(self):
         """清空日志文本框"""
         self.txt_log.config(state="normal")
@@ -602,6 +578,19 @@ class FishingApp:
         if use_osc:
             self._log_msg("[输入] 请确保 VRChat 已开启 OSC (圆盘菜单 → OSC → 启用)")
 
+    def _on_debug_toggle(self):
+        """切换 debug 窗口显示"""
+        config.SHOW_DEBUG = self.var_show_debug.get()
+        self._save_settings()
+        state = "开启" if config.SHOW_DEBUG else "关闭 (提升性能)"
+        self._log_msg(f"[Debug] 调试窗口: {state}")
+        if not config.SHOW_DEBUG:
+            try:
+                import cv2
+                cv2.destroyWindow("Debug Overlay")
+            except Exception:
+                pass
+
     def _preload_yolo(self):
         """后台线程预加载 YOLO 模型，避免阻塞 GUI"""
         def _load():
@@ -614,31 +603,6 @@ class FishingApp:
         t = threading.Thread(target=_load, daemon=True)
         t.start()
 
-    def _on_yolo_toggle(self):
-        """切换 YOLO / 模板匹配"""
-        use_yolo = self.var_yolo.get()
-        config.USE_YOLO = use_yolo
-        self._save_settings()
-        self._update_yolo_status()
-        if use_yolo:
-            model_path = config.YOLO_MODEL
-            if os.path.exists(model_path):
-                self._log_msg(
-                    f"[YOLO] 已启用 YOLO 检测 — 正在预加载模型..."
-                )
-                self._preload_yolo()
-            else:
-                self._log_msg(
-                    f"[YOLO] 已启用但模型未找到: {model_path}"
-                )
-                self._log_msg(
-                    "  请先采集数据并训练: "
-                    "python -m yolo.collect → python -m yolo.label "
-                    "→ python -m yolo.train"
-                )
-        else:
-            self._log_msg("[YOLO] 已切换回模板匹配")
-
     def _on_yolo_collect_toggle(self):
         """切换 YOLO 数据采集模式"""
         collect = self.var_yolo_collect.get()
@@ -650,6 +614,15 @@ class FishingApp:
             )
         else:
             self._log_msg("[YOLO] 数据采集已关闭")
+
+    def _on_yolo_device_change(self, _event=None):
+        """切换 YOLO 推理设备"""
+        dev = self.var_yolo_device.get()
+        config.YOLO_DEVICE = dev
+        self._save_settings()
+        labels = {"auto": "自动 (优先GPU)", "cpu": "CPU (不占显卡)",
+                  "gpu": "GPU (需要CUDA)"}
+        self._log_msg(f"[YOLO] 设备已切换: {labels.get(dev, dev)} — 下次启动生效")
 
     def _update_yolo_status(self):
         """更新 YOLO 状态显示"""

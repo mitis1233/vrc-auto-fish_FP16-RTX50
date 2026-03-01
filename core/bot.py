@@ -24,12 +24,17 @@ import csv
 from collections import deque
 
 _yolo_detector = None
-def _get_yolo_detector():
+_yolo_device_used = None
+
+def _get_yolo_detector(force_reload=False):
     """延迟加载 YOLO 检测器（避免未安装 ultralytics 时报错）"""
-    global _yolo_detector
-    if _yolo_detector is None:
+    global _yolo_detector, _yolo_device_used
+    if force_reload:
+        _yolo_detector = None
+    if _yolo_detector is None or _yolo_device_used != config.YOLO_DEVICE:
         from core.yolo_detector import YoloDetector
         _yolo_detector = YoloDetector(config.YOLO_MODEL, conf=config.YOLO_CONF)
+        _yolo_device_used = config.YOLO_DEVICE
     return _yolo_detector
 
 
@@ -281,10 +286,6 @@ class FishingBot:
                 if abs(bar_cx - track_cx) < 150:
                     found = True
                     detected_angle = 0.0
-            elif bar_cx is not None or track_cx is not None:
-                found = True
-                if track_cx is not None:
-                    detected_angle = 0.0
 
             if found:
                 consecutive += 1
@@ -499,15 +500,17 @@ class FishingBot:
         if config.IL_RECORD:
             log.info("  ► 录制模式 — 跳过开局按压, 请手动控制")
         else:
-            log.info("  ► 开局稳定按压 0.5s + 延迟1s + 0.5s")
-            self.input.mouse_down()
+            log.info("  ► 开局延迟0.5s + 按压0.4s")
             time.sleep(0.5)
-            self.input.mouse_up()
-            time.sleep(1.0)
             self.input.mouse_down()
-            time.sleep(0.5)
+            time.sleep(0.4)
             self.input.mouse_up()
 
+        _last_progress_sr = None
+        _last_track_w = None
+        _last_green = 0.0
+        _PROGRESS_SKIP_FRAMES = 20
+        _prev_green = 0.0
         try:
             while self.running:
                 frame += 1
@@ -597,12 +600,14 @@ class FishingBot:
                 _matched_key = None
                 _bar_scale = 1.0
 
+                _yolo_progress = None
                 if _use_yolo:
                     # ──── YOLO: 一次推理检测全部 ────
                     _yolo_roi = config.DETECT_ROI
                     _ydet = self.yolo.detect(screen, roi=_yolo_roi)
                     fish = _ydet["fish"]
                     bar = _ydet["bar"]
+                    _yolo_progress = _ydet.get("progress")
                     _matched_key = _ydet["fish_name"] if fish else None
                     fish_detect_name = _ydet["fish_name"]
 
@@ -825,14 +830,54 @@ class FishingBot:
                     self._show_debug_overlay(
                         screen_raw, fish, bar, search_region,
                         bar_search_region=bar_search_region,
+                        progress=_yolo_progress,
                         status_text=f"🐟 小游戏 F{frame:04d}"
                     )
                 else:
                     self._show_debug_overlay(
                         screen_raw,
                         bar_search_region=bar_search_region,
+                        progress=_yolo_progress,
                         status_text=f"🐟 小游戏 F{frame:04d} (旋转{self._track_angle:.0f}°补偿中)"
                     )
+
+                # ════════════ 进度条 (记录进度, 不直接判定结束) ════════════
+                green = 0.0
+                if frame <= _PROGRESS_SKIP_FRAMES:
+                    pass
+                elif _use_yolo and _yolo_progress is not None:
+                    prog_w = _yolo_progress[2]
+                    if _last_track_w is None and _ydet.get("track") is not None:
+                        _last_track_w = _ydet["track"][2]
+                    if _last_track_w is not None and _last_track_w > 0:
+                        track_w = _last_track_w
+                        green = min(1.0, prog_w / track_w)
+                else:
+                    _sr_for_progress = search_region
+                    if bar is not None:
+                        bcx = bar[0] + bar[2] // 2
+                        bcy = bar[1] + bar[3] // 2
+                        _pr_half_x = max(config.REGION_X * 2, 80)
+                        _pr_x = max(0, bcx - _pr_half_x)
+                        _pr_y = max(0, bcy - config.REGION_UP)
+                        _pr_w = min(_pr_half_x * 2, w_scr - _pr_x)
+                        _pr_h = min(config.REGION_UP + config.REGION_DOWN,
+                                    h_scr - _pr_y)
+                        _sr_for_progress = (_pr_x, _pr_y, _pr_w, _pr_h)
+                        _last_progress_sr = _sr_for_progress
+                    elif _last_progress_sr is not None:
+                        _sr_for_progress = _last_progress_sr
+                    green = self._check_progress(
+                        screen, fish, _sr_for_progress)
+
+                if green > 0 and _prev_green > 0.01 and (green - _prev_green) > 0.30:
+                    log.debug(f"  进度跳变过大 {_prev_green:.0%}→{green:.0%}，忽略")
+                    green = _prev_green
+
+                if green > 0:
+                    _prev_green = green
+                if green > _last_green:
+                    _last_green = green
 
                 # ════════════ 游戏结束检测 ════════════
                 # ★ 统计本帧检测到的对象数量 (鱼/白条/轨道)
@@ -891,20 +936,16 @@ class FishingBot:
                     elapsed = now_t - fish_gone_since
                     log.info(
                         f"[📋 失败] 鱼连续消失 {elapsed:.1f}s "
-                        f"(>{_timeout}s), 收杆"
+                        f"(>{_timeout}s), 游戏结束"
                     )
-                    if not config.IL_RECORD:
-                        self.input.click()
                     break
                 if (had_good_detection and bar_gone_since is not None
                         and now_t - bar_gone_since > _timeout):
                     elapsed = now_t - bar_gone_since
                     log.info(
                         f"[📋 失败] 白条连续消失 {elapsed:.1f}s "
-                        f"(>{_timeout}s), 收杆"
+                        f"(>{_timeout}s), 游戏结束"
                     )
-                    if not config.IL_RECORD:
-                        self.input.click()
                     break
 
                 # 3) ★ 对象不足检测: 鱼/条/轨道 至少2个才继续
@@ -932,13 +973,6 @@ class FishingBot:
                             f" (之前不足{obj_gone_count}帧)"
                         )
                     obj_gone_count = 0
-
-                # ════════════ 进度条 ════════════
-                green = self._check_progress(screen, fish, search_region)
-                if green > 0.55:
-                    log.info(f"[✅ 成功] 进度条已满! ({green:.0%})")
-                    success = True
-                    break
 
                 # ════════════ ★ 控制 (录制 / 模型 / PD) ════════════
                 if config.IL_RECORD:
@@ -978,14 +1012,27 @@ class FishingBot:
                 time.sleep(config.GAME_LOOP_INTERVAL)
 
         finally:
+            if _last_green > 0.55:
+                success = True
+                log.info(
+                    f"[✅ 成功] 最终进度 {_last_green:.0%} > 55%，判定成功"
+                )
+            else:
+                log.info(
+                    f"[❌ 失败] 最终进度 {_last_green:.0%} <= 55%，判定失败"
+                )
+
             if config.IL_RECORD:
                 self._il_stop_recording()
                 log.info("[🎣 收杆] 录制模式 — 请手动收杆")
             else:
                 self.input.safe_release()
-                time.sleep(0.2)
-                self.input.click()
-                log.info("[🎣 收杆] 点击鼠标收杆")
+                if success:
+                    time.sleep(0.2)
+                    self.input.click()
+                    log.info("[🎣 收杆] 钓鱼成功, 点击收杆")
+                else:
+                    log.info("[🎣 失败] 鱼竿已自动收回, 跳过收杆")
 
         return success
 
@@ -995,11 +1042,13 @@ class FishingBot:
 
     def _show_debug_overlay(self, screen, fish=None, bar=None,
                             search_region=None, bar_search_region=None,
-                            status_text=""):
+                            progress=None, status_text=""):
         """
         统一调试窗口 — 所有阶段可用。
         ★ 先缩小到小图再绘制叠加层，大幅降低 CPU / 内存开销。
         """
+        if not config.SHOW_DEBUG:
+            return
         now = time.time()
         if now - self._last_overlay_time < config.DEBUG_OVERLAY_INTERVAL:
             return
@@ -1123,6 +1172,15 @@ class FishingBot:
                         cv2.FONT_HERSHEY_SIMPLEX, fs, (255, 100, 0), 1)
             cv2.line(debug, (sx(bx), sy(bar_cy)),
                      (sx(bx + bw), sy(bar_cy)), (255, 100, 0), 1)
+
+        # ── 绘制进度条 (黄绿色) ──
+        if progress is not None:
+            px, py, pw, ph = progress[:4]
+            cv2.rectangle(debug, (sx(px), sy(py)),
+                          (sx(px + pw), sy(py + ph)), (0, 220, 180), 2)
+            cv2.putText(debug, "Progress",
+                        (sx(px), sy(py) - 5),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 220, 180), 1)
 
         # ── 鱼和白条之间的连线 ──
         if fish is not None and bar is not None:
@@ -1660,12 +1718,9 @@ class FishingBot:
 
                     # ★ 验证小游戏是否真的出现了
                     if not self._verify_minigame():
-                        log.info(
-                            "[🔄 重试] 未检测到小游戏, "
-                            "点击收回 → 重新抛竿"
-                        )
+                        log.info("[🔄 重试] 未检测到小游戏, 收杆后重新抛竿 (等待3s)")
                         self.input.click()
-                        time.sleep(1.0)
+                        time.sleep(3.0)
                         log.info("─" * 40)
                         continue
 
@@ -1692,7 +1747,6 @@ class FishingBot:
             self.input.safe_release()
         self.state = "已停止"
         log.info("钓鱼线程已停止")
-        # ★ bot 完全停止后才销毁 debug 窗口
         try:
             cv2.destroyWindow("Debug Overlay")
         except Exception:
