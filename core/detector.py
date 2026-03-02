@@ -39,7 +39,7 @@ class ImageDetector:
     _TMPL_MAX_DIM = 9999  # 禁用裁剪: 保留完整模板以提高匹配准确度
 
     def _load_templates(self, img_dir: str, file_map: dict):
-        log.info("加载模板图片:")
+        pass  # 静默加载模板
         for key, fname in file_map.items():
             path = os.path.join(img_dir, fname)
             img = cv2.imread(path, cv2.IMREAD_COLOR)
@@ -59,11 +59,9 @@ class ImageDetector:
                     img = img[:, x0:x0 + mx, :]
                     w = mx
                 if orig_desc != f"{w}×{h}":
-                    log.info(
-                        f"  ✓ {fname:<15s}  {orig_desc} → {w}×{h} (裁剪)"
-                    )
+                    pass
                 else:
-                    log.info(f"  ✓ {fname:<15s}  {w}×{h}")
+                    pass
                 self.templates[key] = img
                 self.templates_gray[key] = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
             else:
@@ -108,8 +106,7 @@ class ImageDetector:
             self._gpu_templates = {}
             log.debug(f"[引擎] CUDA 初始化失败: {e}")
 
-        log.info("[引擎] 模板匹配使用 CPU")
-        log.info("  提示: 安装 CUDA 编译版 opencv 可启用 GPU 加速")
+        pass  # 静默 CPU 模式
 
     _CUDA_MIN_PIXELS = 50_000
 

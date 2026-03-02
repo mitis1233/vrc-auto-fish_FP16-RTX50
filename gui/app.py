@@ -443,9 +443,7 @@ class FishingApp:
                     var.set(self._config_to_display(attr, vtype))
                     loaded.append(attr)
             if loaded:
-                self._log_msg(
-                    f"[系统] 已加载保存的配置 ({len(loaded)} 项)"
-                )
+                pass
         except Exception as e:
             self._log_msg(f"[警告] 加载配置失败: {e}")
 
@@ -478,9 +476,23 @@ class FishingApp:
     #  按钮回调
     # ══════════════════════════════════════════════════════
 
+    @staticmethod
+    def _has_non_ascii(path: str) -> bool:
+        try:
+            path.encode("ascii")
+            return False
+        except UnicodeEncodeError:
+            return True
+
     def _on_start(self):
         """开始钓鱼"""
         if self.bot.running:
+            return
+
+        if self._has_non_ascii(config.BASE_DIR):
+            self._log_msg("[错误] 程序所在路径包含中文或特殊字符，会导致图片/模型加载失败！")
+            self._log_msg(f"  当前路径: {config.BASE_DIR}")
+            self._log_msg("  请将程序移动到纯英文路径下再运行，例如: D:\\fish")
             return
 
         # 先尝试连接窗口
@@ -597,7 +609,7 @@ class FishingApp:
             try:
                 from core.bot import _get_yolo_detector
                 self.bot.yolo = _get_yolo_detector()
-                self._log_msg("[YOLO] 模型预加载完成，GPU 已预热")
+                pass
             except Exception as e:
                 self._log_msg(f"[YOLO] 预加载失败: {e}")
         t = threading.Thread(target=_load, daemon=True)

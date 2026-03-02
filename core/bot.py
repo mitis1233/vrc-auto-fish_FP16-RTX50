@@ -161,7 +161,8 @@ class FishingBot:
         if config.IL_RECORD:
             log.info("[🎣 抛竿] 录制模式 — 请手动抛竿 (点击鼠标)")
         else:
-            log.info("[🎣 抛竿] 点击鼠标抛竿...")
+            log.info("[🎣 抛竿] 摇头 → 抛竿...")
+            self.input.shake_head(degrees=5.0, duration=1.5)
             self.input.click()
         # ★ 从抛竿开始就显示 debug 窗口
         try:

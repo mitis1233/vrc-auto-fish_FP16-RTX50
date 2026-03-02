@@ -1,62 +1,61 @@
 @echo off
-chcp 65001 >nul 2>&1
-title VRChat ��������
+title VRChat Auto Fish
 cd /d "%~dp0"
 
 :: ============================================
-::  ��� Python
+::  Check Python
 :: ============================================
 python --version >nul 2>&1
 if errorlevel 1 (
     echo ============================================
-    echo   [����] δ�ҵ� Python
-    echo   �밲װ Python 3.10+ ����ѡ "Add to PATH"
-    echo   ����: https://www.python.org/downloads/
+    echo   [ERROR] Python not found.
+    echo   Please install Python 3.10+ and check "Add to PATH"
+    echo   Download: https://www.python.org/downloads/
     echo ============================================
     pause
     exit /b 1
 )
 
 :: ============================================
-::  ��������Ƿ��Ѱ�װ
+::  Check if dependencies are installed
 :: ============================================
 python -c "import cv2, keyboard, torch, ultralytics" 2>nul
 if errorlevel 1 (
     echo ============================================
-    echo   �״����У����ڰ�װ����...
-    echo   (����һ�Σ������ĵȴ�)
+    echo   First run detected, installing dependencies...
+    echo   (This only runs once, please wait)
     echo ============================================
     echo.
     call :install_deps
     if errorlevel 1 (
-        echo [����] ��װʧ�ܣ������������Ӻ�����
+        echo [ERROR] Install failed. Check your network and try again.
         pause
         exit /b 1
     )
     echo.
     echo ============================================
-    echo   ������װ��ɣ���������...
+    echo   Dependencies installed, launching app...
     echo ============================================
     echo.
 )
 
 :: ============================================
-::  ��������
+::  Launch
 :: ============================================
 python main.py
 if errorlevel 1 pause
 exit /b 0
 
 :: ============================================
-::  ��װ�����ӹ���
+::  Install subroutine
 :: ============================================
 :install_deps
 echo.
-echo [1/2] ��װ PyTorch...
+echo [1/2] Installing PyTorch...
 call :install_torch
 
 echo.
-echo [2/2] ��װ��������...
+echo [2/2] Installing other dependencies...
 pip install -r requirements.txt
 if errorlevel 1 exit /b 1
 exit /b 0
@@ -64,10 +63,10 @@ exit /b 0
 :install_torch
 nvidia-smi >nul 2>&1
 if errorlevel 1 (
-    echo   δ��⵽ NVIDIA GPU����װ CPU �� PyTorch
+    echo   No NVIDIA GPU detected, installing CPU version of PyTorch
     pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 ) else (
-    echo   ��⵽ NVIDIA GPU����װ CUDA �� PyTorch (GPU ����)
+    echo   NVIDIA GPU detected, installing CUDA version of PyTorch (GPU acceleration)
     pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
 )
 exit /b 0

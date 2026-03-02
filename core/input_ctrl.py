@@ -158,6 +158,42 @@ class InputController:
                 self._post(WM_LBUTTONUP, 0)
             self.mouse_is_down = False
 
+    # ────────────────── 视角控制 ──────────────────
+
+    def shake_head(self, degrees: float = 5.0, duration: float = 1.5):
+        """
+        抛竿前摇头: 左→右→归零, 总耗时 duration 秒。
+        OSC 模式用 /input/LookHorizontal, PostMessage 模式用 mouse_event。
+        """
+        import math
+        steps = 60
+        dt = duration / steps
+        for i in range(steps):
+            if not self.wm.is_valid():
+                break
+            t = i / steps
+            # 正弦波: 0→左→0→右→0
+            angle = math.sin(t * 2 * math.pi) * degrees
+            if self._use_osc and self._osc_client:
+                value = max(-1.0, min(1.0, angle / 45.0))
+                try:
+                    self._osc_client.send_message(
+                        "/input/LookHorizontal", float(value))
+                except Exception:
+                    pass
+            else:
+                pixels_per_deg = 10
+                dx = int(math.sin(t * 2 * math.pi) * degrees
+                         * pixels_per_deg / steps * 2 * math.pi)
+                if dx != 0:
+                    user32.mouse_event(0x0001, dx, 0, 0, 0)
+            time.sleep(dt)
+        if self._use_osc and self._osc_client:
+            try:
+                self._osc_client.send_message("/input/LookHorizontal", 0.0)
+            except Exception:
+                pass
+
     # ────────────────── 安全 ──────────────────
 
     def safe_release(self):

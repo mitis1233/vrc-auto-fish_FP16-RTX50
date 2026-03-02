@@ -55,7 +55,7 @@ class YoloDetector:
 
         if target_dev != "cpu":
             try:
-                log.info(f"[YOLO] 加载模型 (GPU): {model_path}")
+                pass  # 静默加载
                 self.model.predict(
                     warmup_img, conf=0.5, device=target_dev,
                     verbose=False, imgsz=640,
@@ -66,7 +66,7 @@ class YoloDetector:
                         warmup_img, conf=0.5, device=target_dev,
                         verbose=False, imgsz=640,
                     )
-                log.info(f"[YOLO] ✓ GPU 预热完成: {self.model.names}")
+                pass  # GPU 预热完成
                 return
             except Exception as e:
                 if dev_pref == "gpu":
@@ -74,7 +74,7 @@ class YoloDetector:
                 log.warning(f"[YOLO] GPU 不可用 ({e}), 回退 CPU")
 
         self._device = "cpu"
-        log.info(f"[YOLO] 加载模型 (CPU): {model_path}")
+        pass  # 静默加载 CPU
         self.model.predict(
             warmup_img, conf=0.5, device="cpu",
             verbose=False, imgsz=640,
