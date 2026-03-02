@@ -162,18 +162,22 @@ class FishingApp:
                                         command=self._on_whitelist, width=12)
         self.btn_whitelist.pack(side="left", padx=5)
 
+        # ── 开关选项（独立一行，防窗口太窄时被挤掉） ──
+        frm_toggles = ttk.Frame(self.root)
+        frm_toggles.pack(fill="x", **pad)
+
         self.var_topmost = tk.BooleanVar(value=False)
-        ttk.Checkbutton(frm_aux, text="窗口置顶",
+        ttk.Checkbutton(frm_toggles, text="窗口置顶",
                         variable=self.var_topmost,
                         command=self._on_topmost).pack(side="left", padx=5)
 
         self.var_osc = tk.BooleanVar(value=config.USE_OSC)
-        ttk.Checkbutton(frm_aux, text="OSC输入",
+        ttk.Checkbutton(frm_toggles, text="OSC输入",
                         variable=self.var_osc,
                         command=self._on_osc_toggle).pack(side="left", padx=5)
 
         self.var_show_debug = tk.BooleanVar(value=config.SHOW_DEBUG)
-        ttk.Checkbutton(frm_aux, text="Debug窗口",
+        ttk.Checkbutton(frm_toggles, text="Debug窗口",
                         variable=self.var_show_debug,
                         command=self._on_debug_toggle).pack(side="left", padx=5)
 
