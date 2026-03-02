@@ -419,6 +419,10 @@ class FishingApp:
                 data["HOLD_GAIN"] = 0.040
             if data.get("SPEED_DAMPING", 0) > 0.001:
                 data["SPEED_DAMPING"] = 0.00025
+            if data.get("HOLD_MAX_S", 1) < 0.08:
+                data["HOLD_MAX_S"] = 0.100
+            if data.get("HOLD_MIN_S", 1) < 0.02:
+                data["HOLD_MIN_S"] = 0.025
 
             loaded = []
             for attr, val in data.items():
