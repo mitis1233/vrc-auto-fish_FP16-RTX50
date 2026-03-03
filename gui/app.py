@@ -45,6 +45,7 @@ TUNABLE_PARAMS = [
     ("摇头时长(s)",   "SHAKE_HEAD_TIME",  "float", "摇头每段按住时长,0=不摇头"),
     ("按压时间(s)",   "INITIAL_PRESS_TIME","float", "开局按压时长(开局延迟0.5s固定)"),
     ("确认帧数",      "VERIFY_CONSECUTIVE","int",   "连续几帧检测到UI才确认小游戏开始"),
+    ("成功阈值(%)",   "SUCCESS_PROGRESS", "pct",   "进度条超过此百分比判定钓鱼成功"),
 ]
 
 
@@ -297,6 +298,8 @@ class FishingApp:
         val = getattr(config, attr)
         if vtype == "ms":
             return str(round(val * 1000))       # 秒 → 毫秒
+        elif vtype == "pct":
+            return str(round(val * 100))        # 0.55 → 55
         elif vtype == "int":
             return str(int(val))
         elif vtype == "float":
@@ -321,6 +324,8 @@ class FishingApp:
         try:
             if vtype == "ms":
                 return float(text) / 1000.0     # 毫秒 → 秒
+            elif vtype == "pct":
+                return float(text) / 100.0      # 55 → 0.55
             elif vtype == "int":
                 return int(float(text))
             elif vtype == "float":
@@ -375,6 +380,7 @@ class FishingApp:
             "SHAKE_HEAD_TIME":  0.02,
             "INITIAL_PRESS_TIME": 0.2,
             "VERIFY_CONSECUTIVE": 1,
+            "SUCCESS_PROGRESS": 0.55,
         }
 
         for attr, default_val in defaults.items():

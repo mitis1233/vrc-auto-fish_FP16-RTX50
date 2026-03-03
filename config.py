@@ -58,6 +58,7 @@ OBJ_GONE_LIMIT      = 80           # ★ 连续N帧对象不足 → 游戏结束
 POST_CATCH_DELAY    = 3.0         # 钓鱼结束/失败后等待(秒), 收杆→等待→摇头→抛竿
 SHAKE_HEAD_TIME     = 0.02        # 摇头每段按住时长(秒)
 INITIAL_PRESS_TIME  = 0.2         # 开局按压时长(秒)
+SUCCESS_PROGRESS    = 0.55        # 进度条 > 此值判定钓鱼成功 (0~1)
 MINIGAME_TIMEOUT    = 120.0       # 小游戏最长持续时间 (秒), 超过强制结束
 UI_CHECK_FRAMES     = 30           # 每N帧检查一次轨道是否还在 (15→30, 降低检查频率)
 UI_GONE_LIMIT       = 4            # 连续N次轨道检查失败 → 判定游戏结束 (2→4)

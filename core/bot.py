@@ -1073,14 +1073,16 @@ class FishingBot:
                 log.info(
                     f"[⏭ 跳过] 非目标鱼, 已放弃 (进度 {_last_green:.0%} 不计)"
                 )
-            elif _last_green > 0.55:
+            elif _last_green > config.SUCCESS_PROGRESS:
                 success = True
                 log.info(
-                    f"[✅ 成功] 最终进度 {_last_green:.0%} > 55%，判定成功"
+                    f"[✅ 成功] 最终进度 {_last_green:.0%} > "
+                    f"{config.SUCCESS_PROGRESS:.0%}，判定成功"
                 )
             else:
                 log.info(
-                    f"[❌ 失败] 最终进度 {_last_green:.0%} <= 55%，判定失败"
+                    f"[❌ 失败] 最终进度 {_last_green:.0%} <= "
+                    f"{config.SUCCESS_PROGRESS:.0%}，判定失败"
                 )
 
             if config.IL_RECORD:
