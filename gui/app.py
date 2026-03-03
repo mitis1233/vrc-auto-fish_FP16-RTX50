@@ -17,7 +17,6 @@ import cv2
 
 import config
 from core.bot import FishingBot
-from core.input_ctrl import InputController
 from utils.logger import log
 
 
@@ -172,11 +171,6 @@ class FishingApp:
         ttk.Checkbutton(frm_toggles, text="窗口置顶",
                         variable=self.var_topmost,
                         command=self._on_topmost).pack(side="left", padx=5)
-
-        self.var_osc = tk.BooleanVar(value=config.USE_OSC)
-        ttk.Checkbutton(frm_toggles, text="OSC输入",
-                        variable=self.var_osc,
-                        command=self._on_osc_toggle).pack(side="left", padx=5)
 
         self.var_show_debug = tk.BooleanVar(value=config.SHOW_DEBUG)
         ttk.Checkbutton(frm_toggles, text="Debug窗口",
@@ -408,7 +402,6 @@ class FishingApp:
         data = {}
         for attr, (_, vtype) in self._param_vars.items():
             data[attr] = getattr(config, attr)
-        data["USE_OSC"] = config.USE_OSC
         data["DETECT_ROI"] = config.DETECT_ROI
         data["YOLO_COLLECT"] = config.YOLO_COLLECT
         data["YOLO_DEVICE"] = config.YOLO_DEVICE
@@ -439,12 +432,7 @@ class FishingApp:
 
             loaded = []
             for attr, val in data.items():
-                if attr == "USE_OSC":
-                    config.USE_OSC = bool(val)
-                    if hasattr(self, 'var_osc'):
-                        self.var_osc.set(config.USE_OSC)
-                    loaded.append(attr)
-                elif attr == "DETECT_ROI":
+                if attr == "DETECT_ROI":
                     if val and isinstance(val, list) and len(val) == 4:
                         config.DETECT_ROI = val
                         if hasattr(self, 'var_roi'):
@@ -656,17 +644,6 @@ class FishingApp:
         if not topmost:
             self.root.lift()
             self.root.focus_force()
-
-    def _on_osc_toggle(self):
-        """切换 OSC / PostMessage 输入模式（立即重建 InputController）"""
-        use_osc = self.var_osc.get()
-        config.USE_OSC = use_osc
-        self.bot.input = InputController(self.bot.window, use_osc=use_osc)
-        self._save_settings()
-        mode = "OSC (VRChat OSC API)" if use_osc else "PostMessage (Win32)"
-        self._log_msg(f"[输入] 已切换为 {mode} — 立即生效")
-        if use_osc:
-            self._log_msg("[输入] 请确保 VRChat 已开启 OSC (圆盘菜单 → OSC → 启用)")
 
     def _on_debug_toggle(self):
         """切换 debug 窗口显示"""

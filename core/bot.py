@@ -59,7 +59,7 @@ class FishingBot:
         self.window   = WindowManager(config.WINDOW_TITLE)
         self.screen   = ScreenCapture()
         self.detector = ImageDetector(config.IMG_DIR, config.TEMPLATE_FILES)
-        self.input    = InputController(self.window, use_osc=config.USE_OSC)
+        self.input    = InputController(self.window)
 
         self.yolo = None
         if config.USE_YOLO:
@@ -175,7 +175,6 @@ class FishingBot:
             self.input.shake_head()
             time.sleep(0.15)
             self.input.click()
-            log.info("[🎣 抛竿] click() 已发送")
         # ★ 从抛竿开始就显示 debug 窗口
         try:
             screen = self._grab()
