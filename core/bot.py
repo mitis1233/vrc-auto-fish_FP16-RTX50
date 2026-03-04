@@ -1268,22 +1268,48 @@ class FishingBot:
 
     def _debug_display_loop(self):
         """独立线程: 循环显示 debug 帧, cv2.waitKey 阻塞不影响钓鱼线程"""
-        while self.running or self._debug_frame is not None:
+        # 调试日志
+        log.info("[Debug] 调试显示线程已啟動")
+        
+        # 追蹤視窗是否已經創建
+        window_visible = False
+        
+        while self.running:
+            # 如果用戶在運行時取消了 SHOW_DEBUG
+            if not config.SHOW_DEBUG:
+                if window_visible:
+                    try:
+                        cv2.destroyAllWindows()
+                        window_visible = False
+                        log.info("[Debug] 用戶關閉調試窗口，已銷毀視窗")
+                    except Exception:
+                        pass
+                time.sleep(0.5) # 降低檢查頻率
+                continue
+
             frame = None
             with self._debug_lock:
                 if self._debug_frame is not None:
                     frame = self._debug_frame
-                    self._debug_frame = None
+                    # 這裡不要清除 _debug_frame，或者確保它能被頻繁填充
+                    # self._debug_frame = None 
+            
             if frame is not None:
                 try:
                     cv2.imshow("Debug Overlay", frame)
-                except Exception:
+                    window_visible = True
+                except Exception as e:
+                    log.error(f"[Debug] cv2.imshow 异常: {e}")
                     break
-            key = cv2.waitKey(1)
-            if key == 27:  # ESC
+            
+            # cv2.waitKey 是必要的，否則視窗不會渲染
+            if cv2.waitKey(1) & 0xFF == 27:  # ESC
                 break
+            
+            time.sleep(0.01)
+
         try:
-            cv2.destroyWindow("Debug Overlay")
+            cv2.destroyAllWindows()
         except Exception:
             pass
 

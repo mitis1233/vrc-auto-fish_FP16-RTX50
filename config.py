@@ -45,9 +45,9 @@ HOOK_PRE_DELAY      = 0.1         # 提竿前延迟 (★ 0.2→0.1)
 HOOK_POST_DELAY     = 0.4         # 提竿后等待 UI 出现 (★ 0.3→0.4)
 VERIFY_TIMEOUT      = 3.0         # 提竿后验证小游戏出现的超时(秒)
 VERIFY_CONSECUTIVE  = 1           # ★ 累计N帧检测到白条+轨道即确认
-GAME_LOOP_INTERVAL  = 0.005       # 小游戏循环间隔 (60FPS游戏, 尽量快)
-SHOW_DEBUG             = True     # 是否显示debug窗口 (关闭可提升性能)
-DEBUG_OVERLAY_INTERVAL = 0.033    # debug窗口最小刷新间隔(秒) ~30FPS
+GAME_LOOP_INTERVAL  = 0.001       # 降低循環等待，充分利用 RTX 5090 性能
+SHOW_DEBUG             = True     # 默認開啟 Debug 窗口
+DEBUG_OVERLAY_INTERVAL = 0.033    # 恢復到 ~30FPS 刷新頻率，保證流暢度
 DEBUG_OVERLAY_MAX_W    = 1920  # debug窗口最大宽度(像素)
 DEBUG_OVERLAY_MAX_H    = 1080      # debug窗口最大高度(像素)
 TRACK_LOST_LIMIT    = 60           # 连续N帧鱼+条都没了 → 游戏结束 (15→60, 约3-4秒容忍)
@@ -111,6 +111,7 @@ DETECT_ROI        = None           # 玩家框选的检测区域 [x, y, w, h], N
 # ═══════════════════════════════════════════════════════════
 USE_YOLO      = True
 YOLO_MODEL    = os.path.join(BASE_DIR, "yolo", "runs", "fish_detect", "weights", "best.pt")
+YOLO_HALF     = True              # 啟用 FP16 半精度推論
 YOLO_CONF     = 0.45              # YOLO 检测置信度阈值
 YOLO_DEVICE   = "auto"            # "auto" 优先GPU / "cpu" 强制CPU / "gpu" 强制GPU
 YOLO_COLLECT  = False             # True=钓鱼时自动保存截图用于训练

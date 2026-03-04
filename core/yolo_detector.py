@@ -39,51 +39,50 @@ class YoloDetector:
         if not os.path.exists(model_path):
             raise FileNotFoundError(f"YOLO 模型未找到: {model_path}")
 
-        self.conf = conf
-        self.model = YOLO(model_path)
-
         import config as _cfg
-        dev_pref = getattr(_cfg, "YOLO_DEVICE", "auto")
-        cuda_ok = False
-        try:
-            import torch
-            cuda_ok = torch.cuda.is_available()
-        except Exception:
-            pass
-        if dev_pref == "cpu" or not cuda_ok:
-            target_dev = "cpu"
-        elif dev_pref == "gpu":
-            target_dev = 0
-        else:
-            target_dev = 0
+        self.conf = conf
+        self.half = getattr(_cfg, "YOLO_HALF", True)
+        
+        # 1. 正常加载模型
+        self.model = YOLO(model_path)
+        
+        # 2. 确定设备
+        self._device = device
+        if device == "auto":
+            try:
+                import torch
+                self._device = 0 if torch.cuda.is_available() else "cpu"
+            except:
+                self._device = "cpu"
 
+        # 3. 移动到设备 (不在此处手动调 .half())
+        if self._device != "cpu":
+            self.model.to(self._device)
+
+        # 4. 准备预热
+        target_dev = self._device
         warmup_img = np.zeros((640, 640, 3), dtype=np.uint8)
 
         if target_dev != "cpu":
             try:
-                pass  # 静默加载
+                # GPU 預熱: 显式指定 half 参数
                 self.model.predict(
                     warmup_img, conf=0.5, device=target_dev,
-                    verbose=False, imgsz=640,
+                    verbose=False, imgsz=640, half=self.half
                 )
-                self._device = target_dev
                 for _ in range(2):
                     self.model.predict(
                         warmup_img, conf=0.5, device=target_dev,
-                        verbose=False, imgsz=640,
+                        verbose=False, imgsz=640, half=self.half
                     )
-                pass  # GPU 预热完成
                 return
             except Exception as e:
-                if dev_pref == "gpu":
-                    raise RuntimeError(f"[YOLO] 强制 GPU 模式但初始化失败: {e}")
-                log.warning(f"[YOLO] GPU 不可用 ({e}), 回退 CPU")
+                log.warning(f"[YOLO] GPU 预热失败 ({e}), 尝试回退 CPU")
 
         self._device = "cpu"
-        pass  # 静默加载 CPU
         self.model.predict(
             warmup_img, conf=0.5, device="cpu",
-            verbose=False, imgsz=640,
+            verbose=False, imgsz=640, half=False
         )
         log.info(f"[YOLO] ✓ CPU 模式就绪: {self.model.names}")
 
@@ -119,8 +118,12 @@ class YoloDetector:
                 ox, oy = rx, ry
 
         results = self.model.predict(
-            img, conf=self.conf, device=self._device,
+            img, conf=self.conf, 
+            device=self._device,
             verbose=False, imgsz=640,
+            half=self.half if self._device != "cpu" else False, # 顯式啟用 half
+            augment=False,
+            agnostic_nms=True # 類別無關 NMS 提升速度
         )
 
         detections = {

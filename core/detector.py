@@ -227,12 +227,16 @@ class ImageDetector:
 
         # ── 准备灰度图 ──
         gpu_img = None
+        img_gray = None
         if pre_gray is not None:
             if self._use_cuda and isinstance(pre_gray, cv2.cuda.GpuMat):
                 gpu_img = pre_gray
-                ih, iw = gpu_img.size()[1], gpu_img.size()[0]
+                # 直接從 GpuMat 獲取尺寸，避免 download()
+                _size = gpu_img.size()
+                ih, iw = _size[1], _size[0]
             else:
                 img_gray = pre_gray
+                ih, iw = img_gray.shape[:2]
             ox, oy = pre_offset or (0, 0)
         else:
             ox, oy = 0, 0
@@ -246,9 +250,9 @@ class ImageDetector:
                 img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
             else:
                 img_gray = img
-
-        if gpu_img is None:
             ih, iw = img_gray.shape[:2]
+
+        if gpu_img is None and img_gray is not None:
             if self._should_use_cuda(ih, iw):
                 try:
                     gpu_img = cv2.cuda_GpuMat(

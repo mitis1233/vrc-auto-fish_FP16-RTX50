@@ -1,0 +1,42 @@
+{
+  "BITE_FORCE_HOOK": 0.0,
+  "FISH_GAME_SIZE": 30,
+  "DEAD_ZONE": 15,
+  "HOLD_MIN_S": 0.025,
+  "HOLD_MAX_S": 0.16,
+  "HOLD_GAIN": 0.105,
+  "PREDICT_AHEAD": 0.5,
+  "SPEED_DAMPING": 0.00023,
+  "MAX_FISH_BAR_DIST": 300,
+  "VELOCITY_SMOOTH": 0.5,
+  "TRACK_MIN_ANGLE": 3.0,
+  "TRACK_MAX_ANGLE": 45.0,
+  "REGION_UP": 300,
+  "REGION_DOWN": 400,
+  "REGION_X": 100,
+  "POST_CATCH_DELAY": 3.0,
+  "SHAKE_HEAD_TIME": 0.02,
+  "INITIAL_PRESS_TIME": 0.2,
+  "VERIFY_CONSECUTIVE": 1,
+  "SUCCESS_PROGRESS": 0.55,
+  "DETECT_ROI": [
+    904,
+    18,
+    608,
+    1354
+  ],
+  "YOLO_COLLECT": false,
+  "YOLO_DEVICE": "gpu",
+  "SHOW_DEBUG": false,
+  "FISH_WHITELIST": {
+    "fish_black": true,
+    "fish_white": true,
+    "fish_copper": true,
+    "fish_green": true,
+    "fish_blue": true,
+    "fish_purple": true,
+    "fish_pink": true,
+    "fish_red": true,
+    "fish_rainbow": true
+  }
+}
