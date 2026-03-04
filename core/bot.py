@@ -457,7 +457,7 @@ class FishingBot:
         locked_fish_scales = None    # 如 [0.4, 0.5, 0.6]
         locked_bar_scales = None     # 如 [0.4, 0.5, 0.6]
         _BAR_X_HALF = config.REGION_X
-        _FISH_X_HALF = max(config.REGION_X * 2, 80)
+        _FISH_X_HALF = int(config.REGION_X * 1.5)
 
         # 初始化搜索区域
         screen_orig = self._grab()
@@ -629,14 +629,39 @@ class FishingBot:
                     fish = _ydet["fish"]
                     bar = _ydet["bar"]
                     _yolo_progress = _ydet.get("progress")
+
+                    # ★ 增加 X 轴锁定逻辑 (防止 YOLO 误检其他轨道的鱼)
+                    if bar is not None:
+                        raw_bcx = bar[0] + bar[2] // 2
+                        if self._bar_locked_cx is None:
+                            self._bar_locked_cx = raw_bcx
+                            log.info(f"  ★ 轨道X轴锁定(YOLO-条): X={raw_bcx}")
+                        elif abs(raw_bcx - self._bar_locked_cx) > _BAR_X_HALF:
+                            bar = None
+                        
+                        if bar is not None:
+                            # 强制修正 X 到锁定位置
+                            bar = (self._bar_locked_cx - bar[2] // 2, bar[1], bar[2], bar[3], bar[4])
+
                     if fish is not None:
-                        _save = not _fish_id_saved
-                        _color_key = self.detector.identify_fish_type(
-                            screen, fish, debug_save=_save)
-                        if _save:
-                            _fish_id_saved = True
-                        _matched_key = _color_key
-                        fish_detect_name = _color_key
+                        raw_fcx = fish[0] + fish[2] // 2
+                        if self._bar_locked_cx is not None:
+                            if abs(raw_fcx - self._bar_locked_cx) > _FISH_X_HALF:
+                                fish = None
+                        
+                        if fish is not None:
+                            # 强制修正 X 到锁定位置
+                            if self._bar_locked_cx is not None:
+                                fish = (self._bar_locked_cx - fish[2] // 2, fish[1], fish[2], fish[3], fish[4])
+
+                            _save = not _fish_id_saved
+                            # ★ 传入修正后的 fish 坐标，确保识别的是锁定轨道上的鱼
+                            _color_key = self.detector.identify_fish_type(
+                                screen, fish, debug_save=_save)
+                            if _save:
+                                _fish_id_saved = True
+                            _matched_key = _color_key
+                            fish_detect_name = _color_key
                     else:
                         _matched_key = None
                         fish_detect_name = ""
@@ -925,8 +950,8 @@ class FishingBot:
                     green = self._check_progress(
                         screen, fish, _sr_for_progress)
 
-                if green > 0 and _prev_green > 0.01 and (green - _prev_green) > 0.30:
-                    log.debug(f"  进度跳变过大 {_prev_green:.0%}→{green:.0%}，忽略")
+                if green > 0 and _prev_green > 0.01 and (green - _prev_green) > 0.45:
+                    # log.debug(f"  进度跳变过大 {_prev_green:.0%}→{green:.0%}，忽略")
                     green = _prev_green
 
                 if green > 0:
@@ -1704,9 +1729,16 @@ class FishingBot:
             if self._fish_smooth_cy is None:
                 self._fish_smooth_cy = float(raw_fish_cy)
             else:
-                self._fish_smooth_cy = (
-                    0.4 * raw_fish_cy + 0.6 * self._fish_smooth_cy
-                )
+                # ★ 強化位置突變檢測: 如果新位置導致 fib 變化劇烈 (>0.4), 視為檢測抖動/誤檢
+                bar_h_check = max(bar[3], 1)
+                new_fib = (raw_fish_cy - bar[1]) / bar_h_check
+                old_fib = (self._fish_smooth_cy - bar[1]) / bar_h_check
+                if abs(new_fib - old_fib) > 0.4:
+                    # 強力平滑，減緩跳變影響
+                    self._fish_smooth_cy = 0.05 * raw_fish_cy + 0.95 * self._fish_smooth_cy
+                else:
+                    self._fish_smooth_cy = 0.4 * raw_fish_cy + 0.6 * self._fish_smooth_cy
+            
             fish_cy = int(self._fish_smooth_cy)
 
             bar_h   = max(bar[3], 1)
@@ -1719,7 +1751,12 @@ class FishingBot:
 
             # hold = 基准 + 位置修正 + 速度阻尼
             # vel>0(下坠)→加hold减速; vel<0(上升)→减hold防过冲
-            hold = BASE_HOLD + error_clamp * KP + vel * KD
+            # ★ 強化下墜補償: 當速度為正(下落)且誤差大時，額外增加按壓
+            velocity_compensation = 0.0
+            if vel > 100:
+                velocity_compensation = vel * KD * 1.5
+            
+            hold = BASE_HOLD + error_clamp * KP + vel * KD + velocity_compensation
             hold = max(MIN_HOLD, min(hold, MAX_HOLD))
 
             # 记录上次状态供后备使用

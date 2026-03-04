@@ -13,7 +13,7 @@
   "TRACK_MAX_ANGLE": 45.0,
   "REGION_UP": 300,
   "REGION_DOWN": 400,
-  "REGION_X": 100,
+  "REGION_X": 46,
   "POST_CATCH_DELAY": 3.0,
   "SHAKE_HEAD_TIME": 0.02,
   "INITIAL_PRESS_TIME": 0.2,
@@ -27,7 +27,7 @@
   ],
   "YOLO_COLLECT": false,
   "YOLO_DEVICE": "gpu",
-  "SHOW_DEBUG": false,
+  "SHOW_DEBUG": true,
   "FISH_WHITELIST": {
     "fish_black": true,
     "fish_white": true,
