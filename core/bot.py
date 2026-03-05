@@ -203,17 +203,20 @@ class FishingBot:
                 log.info(f"[🪝 提竿] 等待 {elapsed:.1f}s 完毕, 自动提竿")
                 return True
 
-            # debug 窗口
-            try:
-                screen = self._grab()
-                self._show_debug_overlay(
-                    screen,
-                    status_text=f"⏳ 等待提竿 ({elapsed:.0f}/{wait_s:.0f}s)"
-                )
-            except Exception:
-                pass
+            # 僅在 SHOW_DEBUG 開啟且達到刷新間隔時才截圖繪製，大幅降低非釣魚期間的效能佔用
+            if config.SHOW_DEBUG:
+                now = time.time()
+                if config.SHOW_DEBUG and self.debug_mode:
+                    try:
+                        screen = self._grab()
+                        self._show_debug_overlay(
+                            screen,
+                            status_text=f"⏳ 等待提竿 ({elapsed:.0f}/{wait_s:.0f}s)"
+                        )
+                    except Exception:
+                        pass
 
-            time.sleep(0.2)
+            time.sleep(0.1)
 
         return False
 
@@ -421,8 +424,8 @@ class FishingBot:
         if _use_yolo:
             log.info("[YOLO] 使用 YOLO 目标检测")
 
-        # ★ 前几秒开启调试报告（便于排查检测问题）
-        self.detector.debug_report = True
+        # 调试报告仅跟随调试模式(F11)
+        self.detector.debug_report = self.debug_mode
 
         # ★ PostMessage 模式不需要前台聚焦, 只更新点击坐标
         self.input.move_to_game_center()
@@ -462,8 +465,9 @@ class FishingBot:
         # 初始化搜索区域
         screen_orig = self._grab()
 
-        # ★ 始终保存小游戏首帧截图 (原始未旋转)
-        self.screen.save_debug(screen_orig, "minigame_start")
+        # ★ 仅在调试模式下保存小游戏首帧截图 (原始未旋转)
+        if self.debug_mode:
+            self.screen.save_debug(screen_orig, "minigame_start")
         h_orig, w_orig = screen_orig.shape[:2]
         log.info(f"  截图尺寸: {w_orig}×{h_orig}")
 
@@ -559,7 +563,7 @@ class FishingBot:
                     break
 
                 # ════════════ 定期检查 UI 是否还存在 ════════════
-                if frame % config.UI_CHECK_FRAMES == 0 and frame > 10:
+                if frame % config.UI_CHECK_FRAMES == 0 and frame > 20:
                     if _use_yolo:
                         _tc = self.yolo.detect(screen, config.DETECT_ROI)
                         track_check = _tc["track"]
@@ -654,7 +658,7 @@ class FishingBot:
                             if self._bar_locked_cx is not None:
                                 fish = (self._bar_locked_cx - fish[2] // 2, fish[1], fish[2], fish[3], fish[4])
 
-                            _save = not _fish_id_saved
+                            _save = self.debug_mode and (not _fish_id_saved)
                             # ★ 传入修正后的 fish 坐标，确保识别的是锁定轨道上的鱼
                             _color_key = self.detector.identify_fish_type(
                                 screen, fish, debug_save=_save)
@@ -824,40 +828,48 @@ class FishingBot:
                         bar = (self._bar_locked_cx - bar[2] // 2,
                                bar[1], bar[2], bar[3], bar[4])
 
-                # ════════════ ★ 首次检测到白条 → 锁定Y轴搜索范围 ════════════
+                # ════════════ ★ 首次檢測到白條 → 鎖定Y軸搜索範圍 (增加開局寬度) ════════════
                 if bar is not None and not _regions_locked:
+                    # 如果是前 30 幀，我們稍微放寬鎖定條件，或者延後鎖定
                     bar_cy = bar[1] + bar[3] // 2
                     tcx = self._bar_locked_cx or (bar[0] + bar[2] // 2)
-                    y_top = max(0, bar_cy - config.REGION_UP)
-                    y_bot = min(h_scr, bar_cy + config.REGION_DOWN)
+                    
+                    # 初始區域稍微大一點，增加容錯
+                    y_top = max(0, bar_cy - (config.REGION_UP + 50))
+                    y_bot = min(h_scr, bar_cy + (config.REGION_DOWN + 50))
+                    
                     _roi = config.DETECT_ROI
                     if _roi:
                         y_top = max(y_top, _roi[1])
                         y_bot = min(y_bot, _roi[1] + _roi[3])
                     rh = y_bot - y_top
-                    # 鱼: 比白条稍宽的搜索区域
-                    fish_half = max(config.REGION_X * 2, 80)
+                    
+                    # 魚: 比白條稍寬的搜索區域
+                    fish_half = max(config.REGION_X * 2.5, 120)
                     fsx = max(0, tcx - fish_half)
                     fsw = min(fish_half * 2, w_scr - fsx)
                     if _roi:
                         fsx = max(fsx, _roi[0])
                         fsw = min(fsw, _roi[0] + _roi[2] - fsx)
                     search_region = (fsx, y_top, fsw, rh)
-                    # 白条: 紧搜索区域 (用户控制)
-                    bar_half = config.REGION_X
+                    
+                    # 白條: 緊搜索區域
+                    bar_half = config.REGION_X + 20 # 初始鎖定稍微寬一點
                     bsx = max(0, tcx - bar_half)
                     bsw = min(bar_half * 2, w_scr - bsx)
                     if _roi:
                         bsx = max(bsx, _roi[0])
                         bsw = min(bsw, _roi[0] + _roi[2] - bsx)
                     bar_search_region = (bsx, y_top, bsw, rh)
-                    _regions_locked = True
-                    log.info(
-                        f"  ★ 搜索区域锁定(白条Y={bar_cy}): "
-                        f"Y={y_top}~{y_bot} "
-                        f"鱼X=±{fish_half} 条X=±{bar_half}"
-                        f"{' (ROI裁剪)' if _roi else ''}"
-                    )
+                    
+                    # 在前 15 幀不急於鎖定，給予更多偵測機會
+                    if frame > 15:
+                        _regions_locked = True
+                        log.info(
+                            f"  ★ 搜索區域鎖定(F{frame} Y={bar_cy}): "
+                            f"Y={y_top}~{y_bot} "
+                            f"魚X=±{fish_half} 條X=±{bar_half}"
+                        )
 
                 # 鱼: 用同一个轨道X验证, 偏离过大则丢弃
                 if fish is not None:
@@ -928,10 +940,11 @@ class FishingBot:
                         cv2.putText(_dbg, _info, (2, 16),
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.4,
                                     (0, 255, 255), 1)
-                        _ddir = os.path.join(config.BASE_DIR, "debug")
-                        os.makedirs(_ddir, exist_ok=True)
-                        cv2.imwrite(
-                            os.path.join(_ddir, "progress_strip.png"), _dbg)
+                        if self.debug_mode:
+                            _ddir = os.path.join(config.BASE_DIR, "debug")
+                            os.makedirs(_ddir, exist_ok=True)
+                            cv2.imwrite(
+                                os.path.join(_ddir, "progress_strip.png"), _dbg)
                 else:
                     _sr_for_progress = search_region
                     if bar is not None:
@@ -967,14 +980,45 @@ class FishingBot:
                 # 1) 鱼+条都没检测到 → 计数
                 if fish is None and bar is None:
                     no_detect += 1
-                    if no_detect > 5 and not config.IL_RECORD:
-                        self.input.mouse_up()
+                    if not config.IL_RECORD:
+                        # ★ 防墜：短時間丟追蹤時，不要立刻全程放開，避免白條直接掉到底部
+                        # 注意：這段必須放在這裡，因為本分支會 continue，否則 _control_mouse 內的防墜永遠不會跑到
+                        # 若 UI 已經疑似消失（軌道檢查連續失敗中），此時再按壓可能變成「結束後多按幾下」
+                        ui_suspect_gone = (not track_alive) or (ui_gone_count > 0)
+
+                        # 僅在「調試模式 (F11)」開啟時才儲存相關偵測截圖
+                        if self.debug_mode:
+                            if ui_suspect_gone and _last_green > config.SUCCESS_PROGRESS:
+                                log.info("[📋 结束] 进度已达标且UI疑似消失，提前结束以避免多余输入")
+                                break
+
+                            # ★ 若進度已達標且 fish+bar 已連續丟失到「明確不像短暫抖動」的程度，直接結束
+                            # 這能避免 UI 其實已結束但軌道檢查尚未觸發前，仍在持續送防墜短按
+                            if (_last_green > config.SUCCESS_PROGRESS
+                                    and had_good_detection
+                                    and no_detect >= 10):
+                                log.info("[📋 结束] 进度已达标且连续丢失鱼+条达阈值，结束以避免多余输入")
+                                break
+
+                        # 防墜只在丟失初期做少量補償，避免在 UI 結束過程中反覆按壓
+                        if (not ui_suspect_gone and had_good_detection
+                                and no_detect <= 3):
+                            base_hold = getattr(config, 'HOLD_MIN_S', 0.025)
+                            h = self._last_hold if self._last_hold is not None else base_hold
+                            h = max(h, base_hold * 0.8)
+                            h = min(h, 0.03)
+                            self.input.mouse_down()
+                            time.sleep(h)
+                            self.input.mouse_up()
+                        elif no_detect > 5:
+                            self.input.mouse_up()
 
                     if no_detect == 10:
                         log.warning(
                             f"[⚠ 丢失] 连续{no_detect}帧鱼+条均未检测到"
                         )
-                        self.screen.save_debug(screen, "minigame_lost")
+                        if self.debug_mode:
+                            self.screen.save_debug(screen, "minigame_lost")
 
                     if no_detect > config.TRACK_LOST_LIMIT:
                         log.info(f"[📋 结束] 连续{no_detect}帧未检测到有效UI，游戏已结束")
@@ -1476,10 +1520,11 @@ class FishingBot:
             info = f"green={ratio:.0%} w={strip_w}"
             cv2.putText(dbg, info, (2, 16),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 255), 1)
-            debug_dir = os.path.join(config.BASE_DIR, "debug")
-            os.makedirs(debug_dir, exist_ok=True)
-            cv2.imwrite(
-                os.path.join(debug_dir, "progress_strip.png"), dbg)
+            if self.debug_mode:
+                debug_dir = os.path.join(config.BASE_DIR, "debug")
+                os.makedirs(debug_dir, exist_ok=True)
+                cv2.imwrite(
+                    os.path.join(debug_dir, "progress_strip.png"), dbg)
 
         return ratio
 
@@ -1696,6 +1741,10 @@ class FishingBot:
         """
         now = time.time()
 
+        # fish-only 维持性点按节流时间戳 (避免白条丢失时持续长按导致飞天)
+        if not hasattr(self, '_fish_only_last_tap_time'):
+            self._fish_only_last_tap_time = 0.0
+
         # ═══════════ ★ 速度估算: 只要检测到白条就更新 ═══════════
         if bar is not None:
             bar_cy_raw = bar[1] + bar[3] // 2
@@ -1783,42 +1832,54 @@ class FishingBot:
                 )
                 return False
 
-        # ── 后备: 仅鱼或仅条 → 使用上次 hold 衰减至基准 ──
+        # ── 後備: 僅魚、僅條或全丟失 → 使用上次 hold 衰減至基準，防止掉到底部 ──
         fallback = self._last_hold
         if fallback is None:
             fallback = BASE_HOLD
 
-        # 衰减: 没有完整检测时, 逐帧趋向基准悬停
-        fallback = 0.6 * fallback + 0.4 * BASE_HOLD
+        # 衰減: 沒有完整檢測時, 逐幀趨向基准懸停，確保不掉到底部
+        fallback = 0.8 * fallback + 0.2 * BASE_HOLD
         self._last_hold = fallback
+
+        # ★ 防掉到底部補償: 如果完全沒有偵測到魚和條，也要進行基礎按壓
+        if fish is None and bar is None:
+            # 如果之前有成功偵測過，則執行維持性按壓
+            if self._last_hold is not None:
+                h = max(fallback, BASE_HOLD * 0.8)
+                self.input.mouse_down()
+                time.sleep(h)
+                self.input.mouse_up()
+                log.info(f"  (防墜) 丟失追蹤中... 維持按壓 {h*1000:.0f}ms")
+                return True
+            return False
+
+        if fish is not None and bar is None:
+            # ★ 僅偵測到魚時：無法得知白條位置，追魚會飛天，點按太短會掉底。
+            # 改為使用衰減後的 fallback 按壓時長，這能較好地維持在「丟失前的高度」。
+            fish_cy = fish[1] + fish[3] // 2
+            self._last_fish_cy = fish_cy
+            
+            # 使用剛剛計算好的衰減 fallback，它最接近「維持當前高度」所需的按壓
+            h = max(fallback, BASE_HOLD * 0.9)
+            h = min(h, MAX_HOLD * 0.8) # 避免過長導致飛天
+            
+            self.input.mouse_down()
+            time.sleep(h)
+            self.input.mouse_up()
+            log.info(
+                f"  (僅魚-維持) Y={fish_cy} → 維持按壓 {h*1000:.0f}ms"
+            )
+            return True
 
         if fish is not None:
             fish_cy = fish[1] + fish[3] // 2
             self._last_fish_cy = fish_cy
-            # 鱼在上方(需要按)或下方(需要松)
-            if sr is not None:
-                mid_y = sr[1] + sr[3] // 2
-            elif config.DETECT_ROI:
-                mid_y = config.DETECT_ROI[1] + config.DETECT_ROI[3] // 2
-            else:
-                mid_y = fish_cy
-            if fish_cy < mid_y:
-                h = min(fallback * 1.5, MAX_HOLD)
-                self.input.mouse_down()
-                time.sleep(h)
-                self.input.mouse_up()
-                log.info(
-                    f"  (仅鱼) Y={fish_cy} v={vel:+.0f}"
-                    f" → 按 {h*1000:.0f}ms"
-                )
-                return True
-            else:
-                self.input.mouse_up()
-                return False
+            self.input.mouse_up()
+            return False
 
         elif bar is not None:
             bar_cy = bar[1] + bar[3] // 2
-            # 用上次鱼位置估算 fish_in_bar
+            # 用上次魚位置估算 fish_in_bar
             if self._last_fish_cy is not None:
                 est_fib = (self._last_fish_cy - bar[1]) / max(bar[3], 1)
                 error = TARGET_FIB - est_fib
@@ -1831,7 +1892,7 @@ class FishingBot:
             time.sleep(hold)
             self.input.mouse_up()
             log.info(
-                f"  (仅条) Y={bar_cy} v={vel:+.0f}"
+                f"  (僅條) Y={bar_cy} v={vel:+.0f}"
                 f" → 按 {hold*1000:.0f}ms"
             )
             return True

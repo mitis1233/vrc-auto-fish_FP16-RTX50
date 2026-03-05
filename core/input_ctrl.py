@@ -32,6 +32,8 @@ class InputController:
         self.mouse_is_down = False
         self._click_x = 400
         self._click_y = 400
+        self._last_click_time = 0.0
+        self._click_cooldown_s = 0.25
 
     # ────────────────── 内部工具 ──────────────────
 
@@ -67,6 +69,10 @@ class InputController:
     # ────────────────── 鼠标操作 ──────────────────
 
     def click(self, focus: bool = False):
+        now = time.time()
+        if now - self._last_click_time < self._click_cooldown_s:
+            return
+        self._last_click_time = now
         if focus:
             self.focus_game()
             time.sleep(0.1)
@@ -76,6 +82,10 @@ class InputController:
         self._post(WM_LBUTTONUP, 0)
 
     def click_rapid(self):
+        now = time.time()
+        if now - self._last_click_time < self._click_cooldown_s:
+            return
+        self._last_click_time = now
         self._post(WM_LBUTTONDOWN, MK_LBUTTON)
         time.sleep(0.02)
         self._post(WM_LBUTTONUP, 0)

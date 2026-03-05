@@ -550,7 +550,8 @@ class FishingApp:
         self.btn_start.config(state="normal")
         self.btn_stop.config(state="disabled")
         self._log_msg("[系统] ■ 已停止")
-        self._save_log()
+        if self.bot.debug_mode:
+            self._save_log()
 
     def _on_toggle_debug(self):
         """切换调试模式"""
@@ -651,12 +652,10 @@ class FishingApp:
         self._save_settings()
         state = "开启" if config.SHOW_DEBUG else "关闭 (提升性能)"
         self._log_msg(f"[Debug] 调试窗口: {state}")
-        if not config.SHOW_DEBUG:
-            try:
-                import cv2
-                cv2.destroyWindow("Debug Overlay")
-            except Exception:
-                pass
+        # 注意：不要在 GUI 线程直接调用 OpenCV 的 destroyWindow/destroyAllWindows。
+        # Debug Overlay 的 imshow/waitKey 在 bot 的 debug 线程中运行，跨线程销毁窗口
+        # 在部分 OpenCV 版本/驱动组合下会导致 GUI 卡死。
+        # 由 debug 线程检测到 SHOW_DEBUG=False 后自行安全关窗。
 
     def _preload_yolo(self):
         """后台线程预加载 YOLO 模型，避免阻塞 GUI"""

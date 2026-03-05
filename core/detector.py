@@ -487,6 +487,7 @@ class ImageDetector:
             )
 
         # 调试: 保存颜色mask
+        # 僅在偵測器調試模式下保存截圖
         if self.debug_report and detected:
             try:
                 import config as _cfg
@@ -637,7 +638,8 @@ class ImageDetector:
                 else:
                     result = "fish_rainbow"
 
-        if debug_save:
+        # 僅在「調試模式 (F11)」開啟時才儲存相關偵測截圖
+        if debug_save and self.debug_report:
             full_crop = screen[max(0, fy):min(h_img, fy + fh),
                                max(0, fx):min(w_img, fx + fw)]
             dbg = full_crop.copy() if full_crop.size > 0 else crop.copy()
